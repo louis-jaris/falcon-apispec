@@ -17,11 +17,12 @@ def spec_factory():
             title="Swagger Petstore",
             version="1.0.0",
             openapi_version="3.0.2",
-            description="This is a sample Petstore server.  You can find out "
-            'more about Swagger at <a href="https://swagger.io"> '
-            "http://swagger.wordnik.com</a> or on irc.freenode.net, #swagger."
-            'For this sample, you can use the api key "special-key" to test '
-            "the authorization filters",
+            info={"description": "This is a sample Petstore server.  You can find out "
+                                 'more about Swagger at <a href="https://swagger.io"> '
+                                 "http://swagger.wordnik.com</a> or on irc.freenode.net, #swagger."
+                                 'For this sample, you can use the api key "special-key" to test '
+                                 "the authorization filters"
+                  },
             plugins=[FalconPlugin(app)],
         )
 
@@ -54,7 +55,7 @@ class TestPathHelpers:
         hello_resource = HelloResource()
         app.add_route("/hi", hello_resource)
         spec = spec_factory(app)
-        spec.path(resource=hello_resource)
+        spec.path("/hi")
 
         assert spec._paths["/hi"]["get"] == expected
 
@@ -77,7 +78,7 @@ class TestPathHelpers:
         hello_resource = HelloResource()
         app.add_route("/hi", hello_resource)
         spec = spec_factory(app)
-        spec.path(resource=hello_resource)
+        spec.path("/hi")
 
         assert spec._paths["/hi"]["post"] == expected
 
@@ -91,57 +92,9 @@ class TestPathHelpers:
         hello_resource = HelloResource()
         app.add_route("/hi", hello_resource)
         spec = spec_factory(app)
-        spec.path(resource=hello_resource)
+        spec.path("/hi")
 
         assert spec._paths["/hi"]["x-extension"] == "global metadata"
-
-    def test_unredundant_basepath_resource_with_slash(self, app, spec_factory):
-        class HelloResource:
-            def on_get(self, req, resp):
-                """A greeting endpoint.
-                ---
-                description: get a greeting
-                responses:
-                    200:
-                        description: said hi
-                """
-                return "dummy"
-
-        expected = {
-            "description": "get a greeting",
-            "responses": {"200": {"description": "said hi"}},
-        }
-        hello_resource = HelloResource()
-        app.add_route("/v1/foo/v1", hello_resource)
-        spec = spec_factory(app)
-        base_path = '/v1'
-        spec.path(resource=hello_resource, base_path=base_path)
-
-        assert spec._paths["/foo/v1"]["get"] == expected
-
-    def test_unredundant_basepath_resource_wo_slash(self, app, spec_factory):
-        class HelloResource:
-            def on_get(self, req, resp):
-                """A greeting endpoint.
-                ---
-                description: get a greeting
-                responses:
-                    200:
-                        description: said hi
-                """
-                return "dummy"
-
-        expected = {
-            "description": "get a greeting",
-            "responses": {"200": {"description": "said hi"}},
-        }
-        hello_resource = HelloResource()
-        app.add_route("/v1/foo/v1", hello_resource)
-        spec = spec_factory(app)
-        base_path = 'v1'
-        spec.path(resource=hello_resource, base_path=base_path)
-
-        assert spec._paths["/foo/v1"]["get"] == expected
 
     def test_path_with_suffix(self, app, spec_factory):
         class HelloResource:
@@ -174,9 +127,52 @@ class TestPathHelpers:
         app.add_route("/hi", hello_resource_with_suffix, suffix="hello")
 
         spec = spec_factory(app)
-        spec.path(resource=hello_resource_with_suffix)
+        spec.path("/hi")
 
         assert spec._paths["/hi"]["get"] == expected
+
+    def test_path_with_suffix_multiple_route(self, app, spec_factory):
+        class HelloResource:
+            def on_get_hello(self):
+                """A greeting endpoint.
+                ---
+                description: get a greeting
+                responses:
+                    200:
+                        description: said hi
+                """
+                return "dummy"
+
+            def on_get(self):
+                """An invalid method.
+                ---
+                description: this should not pass
+                responses:
+                    200:
+                        description: said hi
+                """
+                return "invalid"
+
+        expected_hello = {
+            "description": "get a greeting",
+            "responses": {"200": {"description": "said hi"}},
+        }
+
+        expected = {
+            "description": "this should not pass",
+            "responses": {"200": {"description": "said hi"}},
+        }
+
+        hello_resource_with_suffix = HelloResource()
+        app.add_route("/", hello_resource_with_suffix)
+        app.add_route("/hello", hello_resource_with_suffix, suffix="hello")
+
+        spec = spec_factory(app)
+        spec.path("/hello")
+        spec.path("/")
+
+        assert spec._paths["/"]["get"] == expected
+        assert spec._paths["/hello"]["get"] == expected_hello
 
     def test_resource_without_endpoint(self, app, spec_factory):
         class HelloResource:
@@ -194,4 +190,7 @@ class TestPathHelpers:
         spec = spec_factory(app)
 
         with pytest.raises(APISpecError):
-            spec.path(resource=hello_resource)
+            spec.path("/hi")
+
+        with pytest.raises(APISpecError):
+            spec.path("")
